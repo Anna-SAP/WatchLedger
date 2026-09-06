@@ -1,0 +1,36 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
+const root=path.resolve(__dirname,'..'),data=path.resolve('work/smoke-data-'+Date.now());
+const python=process.env.PYTHON || 'python';
+const server=spawn(python,[path.join(root,'server.py'),'--data-dir',data,'--no-browser'],{windowsHide:true});
+let context;
+(async()=>{
+ await new Promise((resolve,reject)=>{server.stdout.once('data',resolve);server.once('error',reject);server.once('exit',code=>reject(Error('server exit '+code)));});
+ const token=fs.readFileSync(path.join(data,'pairing-token.txt'),'utf8');
+ context=await chromium.launchPersistentContext(path.resolve('work/test-profile-'+Date.now()),{executablePath:process.env.BROWSER_EXECUTABLE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true,args:['--disable-extensions-except='+path.join(root,'neo'),'--load-extension='+path.join(root,'neo'),'--autoplay-policy=no-user-gesture-required']});
+ const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
+ await worker.evaluate(token=>chrome.storage.local.set({token,queue:[],enabled:true}),token);
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:17643/fixture.html');
+ await page.locator('audio').evaluate(a=>a.play());
+ await page.waitForTimeout(9000);
+ await page.locator('audio').evaluate(a=>a.pause());
+ await page.waitForTimeout(1000);
+ let queue=await worker.evaluate(async()=>(await chrome.storage.local.get('queue')).queue||[]);
+ if(queue.length<1)throw Error('No captured media segments');
+ const sum=xs=>xs.reduce((n,e)=>n+(e.end-e.start)/1000,0);
+ const before=sum(queue);await page.waitForTimeout(4500);
+ queue=await worker.evaluate(async()=>(await chrome.storage.local.get('queue')).queue||[]);
+ if(Math.abs(sum(queue)-before)>0.2)throw Error('Pause incorrectly counted');
+ await page.locator('audio').evaluate(a=>{a.currentTime=50;a.playbackRate=2;return a.play();});
+ await page.waitForTimeout(9000);await page.locator('audio').evaluate(a=>a.pause());await page.waitForTimeout(1000);
+ // A popup triggers the production message handler and authenticated upload.
+ const popup=await context.newPage();await popup.goto('chrome-extension://'+new URL(worker.url()).host+'/popup.html');
+ await popup.locator('#save').click();await popup.waitForTimeout(1000);
+ const response=await fetch('http://127.0.0.1:17643/api/events',{headers:{Authorization:'Bearer '+token}});const events=await response.json();
+ if(!events.length||!events.some(e=>e.rate===2)||events.some(e=>e.to-e.from>30)||events.some(e=>e.browser!=='Neo / Chromium'))throw Error('Upload, browser label, or speed/seek evidence failed');
+ const dash=await context.newPage();dash.on('pageerror',e=>errors.push(e.message));await dash.goto('http://127.0.0.1:17643/#'+token);
+ await dash.locator('#connection').filter({hasText:'本地服务已连接'}).waitFor();await dash.screenshot({path:path.join(data,'preview.png'),fullPage:true});
+ if(errors.length)throw Error(errors.join(';'));
+ console.log(JSON.stringify({ok:true,events:events.length,seconds:sum(events),rates:[...new Set(events.map(e=>e.rate))],pageErrors:errors,checks:['real extension capture','pause exclusion','seek exclusion','2x playback','popup pairing','authenticated SQLite sync','dashboard render']},null,2));
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{if(context)await context.close();server.kill();});

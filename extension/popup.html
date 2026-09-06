@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>视听档案</title><link rel="stylesheet" href="popup.css">
+<body><h1>视听档案 <small>本机记录</small></h1><p id="status">读取状态…</p><p id="queue"></p>
+<label><input type="checkbox" id="enabled"> 自动记录播放</label>
+<p>从本地回顾页面复制配对码，两个浏览器各设置一次。</p>
+<input type="password" id="token" placeholder="本地配对码" aria-label="本地配对码">
+<button id="save">保存并连接</button><button id="open">打开回顾页面</button>
+<button id="clear">清空此浏览器待同步记录</button><p id="message"></p>
+<small>仅连接 127.0.0.1。无痕不记录。后台播放也会计入。网站权限需允许后才能自动采集。</small>
+<script src="popup.js"></script></body></html>

@@ -1,0 +1,10 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {interval,union}=require('../extension/core.js');
+const a={clock:0,time:10000,pos:0,rate:1,playing:true,seeking:false,key:'a',ad:false};
+const b={...a,clock:4000,time:14000,pos:4};
+test('normal playback',()=>assert.equal(interval(a,b).end-interval(a,b).start,4000));
+test('2x wall time',()=>assert.equal(interval({...a,rate:2},{...b,pos:8}).end-interval({...a,rate:2},{...b,pos:8}).start,4000));
+test('pause and buffer excluded',()=>{assert.equal(interval({...a,playing:false},b),null);assert.equal(interval(a,{...b,pos:0}),null);});
+test('seek jump excluded',()=>{assert.equal(interval(a,{...b,pos:90}),null);assert.equal(interval(a,{...b,seeking:true}),null);});
+test('SPA and ads excluded',()=>{assert.equal(interval(a,{...b,key:'next'}),null);assert.equal(interval(a,{...b,ad:true}),null);});
+test('sleep gaps excluded',()=>assert.equal(interval(a,{...b,clock:90000,pos:90}),null));
+test('rewatched coverage union',()=>assert.equal(union([[0,10],[5,20],[0,10],[30,35]]),25));

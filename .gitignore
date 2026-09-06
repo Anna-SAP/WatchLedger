@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.sqlite3*
+*.db
+pairing-token.txt
+.env
+.env.*
+node_modules/
+work/
+dist/
+*.log
