@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {syncConfiguredOutput} from './scripts/sync-output.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const icons=Object.fromEntries([16,32,48,128].map(size=>[size,`icons/disconnected-${size}.png`]));
-const base={manifest_version:3,name:'视听档案 WatchLedger',version:'0.1.1',description:'仅在本机记录网页视频与音频播放，汇总到本地视听档案。',permissions:['storage','unlimitedStorage','alarms','nativeMessaging'],host_permissions:['http://*/*','https://*/*'],incognito:'not_allowed',icons,action:{default_popup:'popup.html',default_icon:icons,default_title:'视听档案 · 未连接'},content_scripts:[{matches:['http://*/*','https://*/*'],js:['core.js','content.js'],all_frames:true,run_at:'document_idle'}]};
+const base={manifest_version:3,name:'视听档案 WatchLedger',version:'0.1.2',description:'仅在本机记录网页视频与音频播放，汇总到本地视听档案。',permissions:['storage','unlimitedStorage','alarms','nativeMessaging'],host_permissions:['http://*/*','https://*/*'],incognito:'not_allowed',icons,action:{default_popup:'popup.html',default_icon:icons,default_title:'视听档案 · 未连接'},content_scripts:[{matches:['http://*/*','https://*/*'],js:['core.js','content.js'],all_frames:true,run_at:'document_idle'}]};
 for(const target of ['neo','firefox']){
  const dest=path.join(root,target);await mkdir(dest,{recursive:true});
  const manifest=structuredClone(base);

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import socket
 import sqlite3
 import threading
 import time
@@ -89,6 +90,8 @@ class App:
             return [json.loads(r[0]) for r in db.execute('SELECT payload FROM events ORDER BY start DESC')]
 
 def make_handler(app, port):
+    hosts = {f'127.0.0.1:{port}', f'[::1]:{port}'}
+    origins = {'http://' + host for host in hosts}
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             # Do not write titles, URLs, credentials, or viewing history to logs.
@@ -96,7 +99,7 @@ def make_handler(app, port):
 
         def origin_ok(self):
             origin = self.headers.get('Origin', '')
-            return not origin or origin == f'http://127.0.0.1:{port}' or origin.startswith(('chrome-extension://', 'moz-extension://'))
+            return not origin or origin in origins or origin.startswith(('chrome-extension://', 'moz-extension://'))
 
         def reply(self, status, value, mime='application/json; charset=utf-8'):
             data = value if isinstance(value, bytes) else json.dumps(value, ensure_ascii=False).encode()
@@ -116,7 +119,7 @@ def make_handler(app, port):
             self.wfile.write(data)
 
         def authorized(self):
-            return (self.headers.get('Host') == f'127.0.0.1:{port}' and self.origin_ok()
+            return (self.headers.get('Host') in hosts and self.origin_ok()
                 and secrets.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + app.token))
 
         def do_OPTIONS(self):
@@ -127,7 +130,7 @@ def make_handler(app, port):
             static = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'),
                 '/style.css': ('style.css', 'text/css'), '/fixture.html': ('fixture.html', 'text/html; charset=utf-8'),
                 '/fixture.js': ('fixture.js', 'text/javascript')}
-            if self.headers.get('Host') != f'127.0.0.1:{port}':
+            if self.headers.get('Host') not in hosts:
                 return self.reply(403, {'error': 'invalid host'})
             if path in static:
                 name, mime = static[path]
@@ -163,6 +166,29 @@ def make_handler(app, port):
                 self.reply(503, {'error': 'database unavailable; retry later'})
     return Handler
 
+
+class LoopbackIPv6Server(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        super().server_bind()
+
+
+def create_servers(app, port):
+    """Share one ledger on the two loopback interfaces, never on a LAN address."""
+    ipv4 = ThreadingHTTPServer(('127.0.0.1', port), make_handler(app, port))
+    actual_port = ipv4.server_port
+    ipv4.RequestHandlerClass = make_handler(app, actual_port)
+    servers = [ipv4]
+    try:
+        servers.append(LoopbackIPv6Server(('::1', actual_port), make_handler(app, actual_port)))
+    except OSError as error:
+        # IPv4 remains usable on systems where IPv6 is disabled or unavailable.
+        print(f'WatchLedger IPv6 loopback unavailable: {error}', flush=True)
+    return servers
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=17643)
@@ -170,7 +196,13 @@ def main():
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()
     app = App(args.data_dir)
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(app, args.port))
+    servers = create_servers(app, args.port)
+    server = servers[0]
+    threads = []
+    for extra in servers[1:]:
+        thread = threading.Thread(target=extra.serve_forever, daemon=True)
+        thread.start()
+        threads.append(thread)
     print(f'WatchLedger listening on http://127.0.0.1:{args.port}; database: {app.path}', flush=True)
     if not args.no_browser:
         webbrowser.open(f'http://127.0.0.1:{args.port}/#' + app.token)
@@ -179,6 +211,11 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        for extra in servers[1:]:
+            extra.shutdown()
+            extra.server_close()
+        for thread in threads:
+            thread.join()
         server.server_close()
 
 if __name__ == '__main__':

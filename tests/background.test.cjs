@@ -57,3 +57,24 @@ test('unauthorized response keeps queue and returns to gray',async()=>{
  const h=harness({token:'bad',queue:[{id:'pending'}]}, {fetch:async()=>({ok:false,status:401})});await h.ready();await h.send('sync');
  assert.equal(h.data.connected,false);assert.match(h.data.status,/配对码无效/);assert.equal(h.data.queue.length,1);
 });
+test('IPv4 network failure falls back to IPv6 and remembers the usable address',async()=>{
+ const calls=[];const h=harness({token:'paired',queue:[{id:'pending'}]}, {fetch:async(url,options)=>{
+   calls.push({url,body:options.body});if(url.startsWith('http://127.0.0.1'))throw Error('Failed to fetch');return {ok:true};
+ }});
+ await h.ready();assert.equal(h.data.connected,true);assert.equal(h.data.endpoint,'http://[::1]:17643');assert.equal(h.data.queue.length,0);
+ assert.equal(calls.length,2);assert.equal(calls[0].body,calls[1].body);
+ await h.send('sync');assert.equal(calls.length,3);assert.equal(calls[2].url,'http://[::1]:17643/api/status');
+});
+test('HTTP auth failures do not retry against another address',async()=>{
+ const calls=[];const h=harness({token:'bad'},{fetch:async url=>{calls.push(url);return {ok:false,status:401};}});
+ await h.ready();assert.equal(calls.length,1);assert.equal(h.data.connected,false);
+});
+test('untrusted saved endpoint never receives a pairing token',async()=>{
+ const calls=[];const h=harness({token:'paired',endpoint:'https://attacker.example'},{fetch:async url=>{calls.push(url);return {ok:true};}});
+ await h.ready();assert.deepEqual(calls,['http://127.0.0.1:17643/api/status']);
+});
+test('cached IPv6 failure can reconnect over IPv4',async()=>{
+ const calls=[];const h=harness({token:'paired',endpoint:'http://[::1]:17643'}, {fetch:async url=>{
+   calls.push(url);if(url.includes('[::1]'))throw Error('IPv6 unavailable');return {ok:true};
+ }});await h.ready();assert.equal(calls.length,2);assert.equal(h.data.endpoint,'http://127.0.0.1:17643');assert.equal(h.data.connected,true);
+});

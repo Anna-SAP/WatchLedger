@@ -6,6 +6,8 @@ import threading
 import time
 import unittest
 from urllib.request import Request, urlopen
+from urllib.request import build_opener, ProxyHandler
+from unittest.mock import patch
 from urllib.error import HTTPError
 from http.server import ThreadingHTTPServer
 spec = importlib.util.spec_from_file_location('server', Path(__file__).resolve().parents[1] / 'server.py')
@@ -33,6 +35,46 @@ class Tests(unittest.TestCase):
         self.app.insert([event()]);self.assertEqual(len(s.App(self.tmp.name).events()),1)
     def test_nonfinite(self):
         with self.assertRaises(ValueError):s.validate({**event(),'duration':float('nan')})
+    def test_ipv4_remains_available_without_ipv6(self):
+        with patch.object(s, 'LoopbackIPv6Server', side_effect=OSError('IPv6 disabled')):
+            servers=s.create_servers(self.app,0)
+        try:
+            self.assertEqual(len(servers),1)
+            self.assertEqual(servers[0].server_address[0],'127.0.0.1')
+        finally:
+            for server in servers:server.server_close()
+    def test_both_loopbacks_share_authenticated_ledger(self):
+        servers=s.create_servers(self.app,0)
+        if len(servers)!=2:
+            for server in servers:server.server_close()
+            self.skipTest('IPv6 loopback is unavailable on this machine')
+        threads=[threading.Thread(target=server.serve_forever,daemon=True) for server in servers]
+        for thread in threads:thread.start()
+        port=servers[0].server_port
+        opener=build_opener(ProxyHandler({}))
+        def call(address,path,body=None,extra=None):
+            headers={'Authorization':'Bearer '+self.app.token,**(extra or {})}
+            return opener.open(Request(f'http://{address}:{port}'+path,headers=headers,
+                data=json.dumps(body).encode() if body is not None else None),timeout=3)
+        try:
+            self.assertEqual(servers[0].server_address[0],'127.0.0.1')
+            self.assertEqual(servers[1].server_address[0],'::1')
+            origin=f'http://[::1]:{port}'
+            with call('[::1]','/api/status',extra={'Origin':origin}) as response:
+                self.assertTrue(json.load(response)['ok'])
+                self.assertEqual(response.headers['Access-Control-Allow-Origin'],origin)
+            e=event()
+            with call('127.0.0.1','/api/events',[e]) as response:self.assertEqual(response.status,200)
+            with call('[::1]','/api/events',[e]) as response:self.assertEqual(response.status,200)
+            self.assertEqual(len(self.app.events()),1)
+            for headers in [{'Authorization':'Bearer wrong'}, {'Origin':'https://attacker.example'}]:
+                with self.assertRaises(HTTPError) as error:call('[::1]','/api/status',extra=headers)
+                self.assertEqual(error.exception.code,401)
+            with self.assertRaises(HTTPError) as error:call('[::1]','/',extra={'Host':f'evil.example:{port}'})
+            self.assertEqual(error.exception.code,403)
+        finally:
+            for server in servers:server.shutdown();server.server_close()
+            for thread in threads:thread.join()
     def test_http(self):
         server=ThreadingHTTPServer(('127.0.0.1',0),s.make_handler(self.app,0));port=server.server_port
         server.RequestHandlerClass=s.make_handler(self.app,port)

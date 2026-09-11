@@ -1,6 +1,6 @@
 'use strict';
 const api=globalThis.browser||chrome;
-const ENDPOINT='http://127.0.0.1:17643';
+const ENDPOINTS=['http://127.0.0.1:17643','http://[::1]:17643'];
 let chain=Promise.resolve();
 let starting=null;
 async function connectionState(connected,status) {
@@ -29,14 +29,22 @@ async function receive(message,sender) {
   return {ok:true};
 }
 async function sync() {
-  const {queue=[],token=''}=await api.storage.local.get(['queue','token']);
+  const {queue=[],token='',endpoint:preferred}=await api.storage.local.get(['queue','token','endpoint']);
   if(!token) {await connectionState(false,'等待配对，点击右上角启动服务 / 连接');return {ok:false};}
   try {
-    const response=await fetch(ENDPOINT+(queue.length?'/api/events':'/api/status'),{
-      method:queue.length?'POST':'GET',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-      ...(queue.length?{body:JSON.stringify(queue.slice(0,500))}:{}),signal:AbortSignal.timeout(5000)});
+    const candidates=ENDPOINTS.includes(preferred)?[preferred,...ENDPOINTS.filter(x=>x!==preferred)]:ENDPOINTS;
+    let response,endpoint;
+    for(const candidate of candidates){
+      try{
+        response=await fetch(candidate+(queue.length?'/api/events':'/api/status'),{
+          method:queue.length?'POST':'GET',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+          ...(queue.length?{body:JSON.stringify(queue.slice(0,500))}:{}),signal:AbortSignal.timeout(5000)});
+        endpoint=candidate;
+        break;
+      }catch(error){if(candidate===candidates.at(-1))throw error;}
+    }
     if(!response.ok) throw Error('HTTP '+response.status);
-    await api.storage.local.set({queue:queue.slice(500),lastSync:Date.now()});
+    await api.storage.local.set({queue:queue.slice(500),lastSync:Date.now(),endpoint});
     await connectionState(true,'已连接本机');
     return {ok:true};
   } catch(e) {
@@ -58,7 +66,7 @@ async function startService() {
       if(typeof result.token!=='string'||!result.token.trim()) throw Error('启动桥接未返回有效配对码');
       await api.storage.local.set({token:result.token});
       const connected=await serial(sync);
-      if(!connected.ok) throw Error('服务已启动，但连接尚未完成。请检查连接状态后重试。');
+      if(!connected.ok) throw Error('服务已启动，但浏览器尚未连接。若刚更新插件，请重启本地服务后重试。');
       return {ok:true};
     } catch(e) {
       await api.storage.local.set({launchError:e.message});

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "视听档案 WatchLedger",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "仅在本机记录网页视频与音频播放，汇总到本地视听档案。",
   "permissions": [
     "storage",
