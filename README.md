@@ -73,6 +73,24 @@ python -m unittest discover -s tests -p "test_*.py"
 
 修改 extension/ 后需运行 build.mjs，再到浏览器扩展管理页重新加载并刷新节目页。
 
+### 自动同步实际安装目录
+
+开发仓库可通过本地文件 `.watchledger-local.json` 配置浏览器当前加载的安装目录，例如：
+
+```json
+{
+  "outputDirectory": "D:\\Apps\\WatchLedger"
+}
+```
+
+配置后，`node build.mjs` 在构建 Neo / Firefox 扩展后自动同步应用文件到该目录，并逐文件校验结果。同步前会把需要替换的旧文件备份到源码仓库 `work/output-sync-backups/`；不会删除目标中的文件，也不会复制数据库、配对码、浏览器配置、`work/` 或 `dist/`。目标必须是已有 WatchLedger 安装目录，且不能是 Git 仓库、源码目录的父/子目录或带符号链接的路径。扩展身份变化会阻止同步。
+
+本地配置已被 Git 和打包脚本排除，不会发布本机路径。未配置时只构建；配置错误或同步失败时构建命令会报错。中间测试可用 `node build.mjs --no-sync` 仅构建，最终交付应正常运行 `node build.mjs`；只同步已有构建可运行 `node scripts/sync-output.mjs`。
+
+同步由构建触发，单独合并 GitHub PR 不会更新本机安装目录。文件同步后，在浏览器扩展详情页点击原扩展的 **重新加载** 才会启用新代码，不要卸载重装。
+
+同步逻辑测试：`node --test tests/output-sync.test.mjs`。
+
 ## 文件结构
 
 - extension/：共用扩展源代码。

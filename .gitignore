@@ -9,3 +9,4 @@ node_modules/
 work/
 dist/
 *.log
+.watchledger-local.json
