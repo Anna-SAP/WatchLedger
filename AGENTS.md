@@ -1,5 +1,6 @@
 # WatchLedger development workflow
 
+- Standing user authorization: after every functionality update or important code update in this project, complete relevant validation, create a ready-for-review PR (never Draft), and merge it into the repository's default/main branch without asking the user again. Check the PR head, conflicts, required checks, and branch protection before merging; do not bypass protection. Synchronize local main afterward and report the PR link and result. If validation or a required check fails, fix it before merging, or report a genuine blocker.
 - After changing plugin functionality, run relevant tests, then `node build.mjs` to build both browser extensions and synchronize the configured installed copy. Do not treat updating only this Git checkout as delivery.
 - `.watchledger-local.json` is ignored local configuration. Its `outputDirectory` identifies the actual browser installation. Keep this file local; never embed its machine-specific path in tracked source.
 - A configured synchronization failure is a delivery failure: fix it or report the exact blocker. Do not silently use `--no-sync` to claim the installed extension is updated. Use `node build.mjs --no-sync` for isolated tests or intermediate builds only.

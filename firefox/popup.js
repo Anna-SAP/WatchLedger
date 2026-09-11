@@ -30,7 +30,11 @@ $('save').onclick=async()=>{
   catch(e){report(e);}
 };
 $('enabled').onchange=async()=>{try{await api.storage.local.set({enabled:$('enabled').checked});}catch(e){report(e);}};
-$('open').onclick=async()=>{try{const {token=''}=await api.storage.local.get('token');await api.tabs.create({url:'http://127.0.0.1:17643/#'+encodeURIComponent(token)});}catch(e){report(e);}};
+$('open').onclick=async()=>{try{
+  const {token='',endpoint}=await api.storage.local.get(['token','endpoint']);
+  const local=['http://127.0.0.1:17643','http://[::1]:17643'].includes(endpoint)?endpoint:'http://127.0.0.1:17643';
+  await api.tabs.create({url:local+'/#'+encodeURIComponent(token)});
+}catch(e){report(e);}};
 $('clear').onclick=async()=>{if(confirm('删除此浏览器尚未同步的片段？此操作不可撤销。')){try{await api.runtime.sendMessage({type:'clearQueue'});await refresh();}catch(e){report(e);}}};
 api.storage.onChanged.addListener((changes,area)=>{if(area==='local')refresh().catch(report);});
 refresh().then(()=>api.runtime.sendMessage({type:'sync'})).then(refresh).catch(report);
