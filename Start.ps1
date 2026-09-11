@@ -5,6 +5,8 @@ $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
 if (Test-Path -LiteralPath $bundled) { $runtime = $bundled }
 elseif ($pythonCmd) { $runtime = $pythonCmd.Source }
 else { throw 'Python 3.10+ is required. Install Python then run Start.cmd again.' }
+& $runtime (Join-Path $PSScriptRoot 'scripts\native_host.py') --install
+if ($LASTEXITCODE -ne 0) { Write-Warning 'Browser launcher registration failed. Starting the service manually; see the error above.' }
 $arguments = @((Join-Path $PSScriptRoot 'server.py'))
 if ($NoBrowser) { $arguments += '--no-browser' }
 & $runtime @arguments
