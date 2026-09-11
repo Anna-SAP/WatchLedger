@@ -1,7 +1,7 @@
 from pathlib import Path
 import zipfile
 root=Path(__file__).resolve().parents[1]
-target=root/'dist'/'WatchLedger-0.1.0.zip'
+target=root/'dist'/'WatchLedger-0.1.1.zip'
 target.parent.mkdir(exist_ok=True)
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as z:
     for p in sorted(root.rglob('*')):
